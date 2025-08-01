@@ -1,0 +1,1 @@
+srun python scripts/jiuge.py   --nvidia /home/shared/models/fm9g-7B-sft-v0.0-F16.gguf
