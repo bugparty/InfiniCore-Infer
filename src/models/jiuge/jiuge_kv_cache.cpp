@@ -1,11 +1,15 @@
 #include "jiuge_impl.hpp"
 
+// Allocate an empty KV cache matching the model configuration.  The
+// cache stores tensors for each device and layer so that decoding can
+// be performed incrementally.
 __C struct KVCache *createKVCache(const JiugeModel *model) {
     KVCache *cache = new KVCache();
     auto ndev = model->dev_resources.size();
     auto nkvh = model->meta.nkvh / ndev;
     auto max_len = model->meta.dctx;
     auto dh = model->meta.dh;
+    // Each tensor has shape [max_len, nkvh, dh]
     auto shape = std::vector<size_t>{max_len, nkvh, dh};
     for (unsigned int idev = 0; idev < ndev; idev++) {
         RUN_INFINI(infinirtSetDevice(model->device, model->dev_ids[idev]));
@@ -22,6 +26,8 @@ __C struct KVCache *createKVCache(const JiugeModel *model) {
     return cache;
 }
 
+// Clone an existing KV cache up to seq_len tokens.  Useful when
+// branching the generation stream.
 __C struct KVCache *duplicateKVCache(const JiugeModel *model,
                                      const KVCache *kv_cache,
                                      unsigned int seq_len) {
@@ -46,6 +52,7 @@ __C struct KVCache *duplicateKVCache(const JiugeModel *model,
     return new_kv_cache;
 }
 
+// Release all tensors contained in the KV cache
 __C void dropKVCache(JiugeModel const *model, KVCache *kv_cache) {
     auto ndev = model->dev_resources.size();
     for (unsigned int idev = 0; idev < ndev; idev++) {

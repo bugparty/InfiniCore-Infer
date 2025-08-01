@@ -4,6 +4,9 @@
 #include "jiuge_impl.hpp"
 
 #include <cmath>
+
+// Helper functions for wrapping raw weight pointers in Tensor objects
+// Input embedding matrix [vocab, hidden]
 inline std::shared_ptr<Tensor> getInEmbd(
     JiugeMeta const *meta,
     JiugeWeights const *w) {
@@ -11,6 +14,7 @@ inline std::shared_ptr<Tensor> getInEmbd(
     return Tensor::weight((char *)w->input_embd, meta->dt_logits, shape);
 }
 
+// Final RMSNorm weights
 inline std::shared_ptr<Tensor> getOutNorm(
     JiugeMeta const *meta,
     JiugeWeights const *w) {
@@ -18,6 +22,7 @@ inline std::shared_ptr<Tensor> getOutNorm(
     return Tensor::weight((char *)w->output_norm, w->dt_norm, shape);
 }
 
+// Output projection weights
 inline std::shared_ptr<Tensor> getOutEmbd(
     JiugeMeta const *meta,
     JiugeWeights const *w) {
@@ -31,6 +36,7 @@ inline std::shared_ptr<Tensor> getOutEmbd(
     }
 }
 
+// RMSNorm weights before self-attention
 inline std::shared_ptr<Tensor> getAttnNorm(
     JiugeMeta const *meta,
     JiugeWeights const *w,
@@ -39,6 +45,7 @@ inline std::shared_ptr<Tensor> getAttnNorm(
     return Tensor::weight((char *)(w->attn_norm[layer]), w->dt_norm, shape);
 }
 
+// Concatenated projection weights for Q, K and V
 inline std::shared_ptr<Tensor> getAttnQKV(
     JiugeMeta const *meta,
     JiugeWeights const *w,
@@ -58,6 +65,7 @@ inline std::shared_ptr<Tensor> getAttnQKV(
     }
 }
 
+// Optional bias for QKV projections
 inline std::shared_ptr<Tensor> getAttnQKVBias(
     JiugeMeta const *meta,
     JiugeWeights const *w,
@@ -70,6 +78,7 @@ inline std::shared_ptr<Tensor> getAttnQKVBias(
     return Tensor::weight((char *)(w->attn_qkv_b[layer]) + offset, w->dt_mat, shape);
 }
 
+// Output projection of the attention module
 inline std::shared_ptr<Tensor> getAttnO(JiugeMeta const *meta,
                                         JiugeWeights const *w, size_t layer,
                                         size_t idev, size_t ndev) {
@@ -87,6 +96,7 @@ inline std::shared_ptr<Tensor> getAttnO(JiugeMeta const *meta,
     }
 }
 
+// RMSNorm weights before the feed-forward network
 inline std::shared_ptr<Tensor> getFFNNorm(
     JiugeMeta const *meta,
     JiugeWeights const *w,
@@ -95,6 +105,7 @@ inline std::shared_ptr<Tensor> getFFNNorm(
     return Tensor::weight((char *)(w->ffn_norm[layer]), w->dt_norm, shape);
 }
 
+// Concatenated weights for the SwiGLU gate and up projection
 inline std::shared_ptr<Tensor> getFFNGateUp(
     JiugeMeta const *meta,
     JiugeWeights const *w,
@@ -114,6 +125,7 @@ inline std::shared_ptr<Tensor> getFFNGateUp(
     }
 }
 
+// Down projection weights of the feed-forward network
 inline std::shared_ptr<Tensor> getFFNDown(
     JiugeMeta const *meta,
     JiugeWeights const *w,
@@ -131,6 +143,7 @@ inline std::shared_ptr<Tensor> getFFNDown(
     }
 }
 
+// Generate the sine table used for rotary embeddings
 inline std::shared_ptr<Tensor> getSinTable(JiugeMeta const *meta) {
     auto half_dh = meta->dh / 2;
     auto unit = dsize(meta->dt_logits);
@@ -158,6 +171,7 @@ inline std::shared_ptr<Tensor> getSinTable(JiugeMeta const *meta) {
     return tensor;
 }
 
+// Generate the cosine table used for rotary embeddings
 inline std::shared_ptr<Tensor> getCosTable(JiugeMeta const *meta) {
     auto half_dh = meta->dh / 2;
     auto unit = dsize(meta->dt_logits);

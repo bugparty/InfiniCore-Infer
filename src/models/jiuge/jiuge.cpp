@@ -1,6 +1,11 @@
 #include "jiuge_impl.hpp"
 #include "jiuge_weight.hpp"
 
+// Implementation of the single GPU/CPU inference engine for the
+// Jiuge family of transformer models.  The file wires together tensor
+// preparation, kernel descriptor creation and the per-layer execution
+// logic used by `JiugeModel`.
+
 #include "../../tensor.hpp"
 #include "../../utils.hpp"
 #include "infinicore_infer.h"
@@ -9,6 +14,10 @@
 #include <thread>
 #include <vector>
 
+// Initialise all tensors and handles used by a single worker thread.
+// The weights are sliced across devices if multiple accelerators are
+// used.  After this call DeviceResource owns tensors placed on the
+// corresponding device.
 void createDeviceResource(DeviceResource *rsrc, const JiugeMeta *meta,
                           const JiugeWeights *weights,
                           infiniDevice_t device, int idev,
@@ -66,6 +75,7 @@ void createDeviceResource(DeviceResource *rsrc, const JiugeMeta *meta,
     RUN_INFINI(infinirtDeviceSynchronize());
 }
 
+// Free all tensors and handles associated with a device worker
 void releaseDeviceResource(DeviceResource &res) {
     infinirtDeviceSynchronize();
     // Release individual Tensors
@@ -110,6 +120,9 @@ void releaseDeviceResource(DeviceResource &res) {
     res.comm = nullptr;
 }
 
+// Execute one batch on a single device.  The batch may contain multiple
+// requests which share the same model weights but have individual KV
+// caches and sampling parameters.
 void inferDeviceBatch(const JiugeMeta &meta, DeviceResource &rsrc,
                       uint32_t idev, uint32_t ndev,
                       const uint32_t *tokens, uint32_t ntok,
@@ -504,6 +517,7 @@ inferBatch(struct JiugeModel *model,
            struct KVCache **kv_caches,
            const float *temperature, const uint32_t *topk, const float *topp,
            uint32_t *output) {
+    // Populate shared request structure and wake up all worker threads
     model->req.tokens = tokens;
     model->req.ntok = ntok;
     model->req.req_lens = req_lens;
@@ -531,6 +545,8 @@ inferBatch(struct JiugeModel *model,
 
 void launchDevice(const JiugeMeta &meta, const JiugeWeights *weights, DeviceResource *rsrc, InferState &state, InferRequest &req,
                   infiniDevice_t device, int idev, int ndev, int dev_id, infinicclComm_t comm) {
+    // Spawned thread entry. Creates device specific resources and then
+    // waits for inference requests.
     // Create Device Resource
     createDeviceResource(rsrc, &meta, weights, device, idev, ndev, dev_id, comm);
     {
@@ -561,6 +577,7 @@ void launchDevice(const JiugeMeta &meta, const JiugeWeights *weights, DeviceReso
 }
 
 JiugeModel::JiugeModel(const JiugeMeta *_meta, const JiugeWeights *weights, infiniDevice_t device_, std::vector<int> device_ids) : meta(*_meta) {
+    // Launch one worker thread per device and initialise NCCL communicators
     int ndev = int(device_ids.size());
     device = device_;
     dev_ids = device_ids;
@@ -596,6 +613,7 @@ createJiugeModel(const JiugeMeta *meta,
 }
 
 __C void destroyJiugeModel(struct JiugeModel *model) {
+    // Signal all workers to exit and join threads
     auto ndev = model->dev_resources.size();
 
     for (size_t idev = 0; idev < ndev; idev++) {
